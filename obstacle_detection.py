@@ -131,6 +131,7 @@ while True:
     # Break the loop if the 'q' key is pressed
     if cv.waitKey(1) & 0xFF == ord('q'):
         break
+        
 
 # --- Cleanup ---
 print("[INFO] Exiting program...")
