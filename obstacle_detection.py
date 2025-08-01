@@ -1,6 +1,8 @@
 import apriltag
 import cv2 as cv
-import os
+import numpy as np
+import sys
+import time
 
 # --- Function to handle the detected tag ID ---
 def return_value(tag_id):
@@ -10,21 +12,57 @@ def return_value(tag_id):
     to return a value or perform other actions.
     """
     print(f"[ACTION] AprilTag with ID {tag_id} has been detected.")
-    # You can return the tag_id here if this function is called from another function
-    # return tag_id
 
-# --- End of function ---
+# --- New Function for Drone Logic ---
+def drone_logic(results):
+    """
+    Simulates drone flight commands based on the number of AprilTags detected.
+    This function calculates the center point in pixel coordinates.
+    To use this for an actual drone, you would need to convert these
+    pixel coordinates to real-world coordinates using camera calibration.
+    """
+    num_tags = len(results)
+    
+    if num_tags == 2:
+        print("[DRONE COMMAND] Two tags detected: Reducing altitude by half.")
+    elif num_tags == 3:
+        print("[DRONE COMMAND] Three tags detected: Reducing altitude by half.")
+        
+        # Calculate the average center point of the three tags
+        center_x_sum = sum(r.center[0] for r in results)
+        center_y_sum = sum(r.center[1] for r in results)
+        avg_center_x = int(center_x_sum / num_tags)
+        avg_center_y = int(center_y_sum / num_tags)
+        
+        print(f"[DRONE COMMAND] Flying directly in between all three tags (pixel center: ({avg_center_x}, {avg_center_y})).")
+    elif num_tags == 4:
+        print("[DRONE COMMAND] Four tags detected: Reducing altitude by half.")
 
-# --- Setup for live camera feed ---
-print("[INFO] starting video stream...")
-# The argument 0 typically refers to the default camera
+        # Calculate the average center point of the four tags
+        center_x_sum = sum(r.center[0] for r in results)
+        center_y_sum = sum(r.center[1] for r in results)
+        avg_center_x = int(center_x_sum / num_tags)
+        avg_center_y = int(center_y_sum / num_tags)
+        
+        print(f"[DRONE COMMAND] Flying directly in between all four tags (pixel center: ({avg_center_x}, {avg_center_y})).")
+    elif num_tags > 4:
+        print(f"[DRONE COMMAND] More than four tags ({num_tags}) detected, no specific action defined.")
+    else:
+        print("[DRONE COMMAND] Fewer than two tags detected, no specific action defined.")
+
+# --- End of drone logic function ---
+
+# --- Direct camera connection setup ---
+# Use index 0 to open the first available camera.
+# If you have multiple cameras, you might need to change this index.
+print("[INFO] Starting video stream...")
 cap = cv.VideoCapture(0)
 
 # Check if the camera was opened successfully
 if not cap.isOpened():
     print("[ERROR] Could not open video stream. Please check your camera.")
-    exit()
-# --- End of setup ---
+    sys.exit()
+# --- End of camera setup ---
 
 # define the AprilTag detector options
 print("[INFO] configuring AprilTag detector...")
@@ -32,34 +70,30 @@ options = apriltag.DetectorOptions(
     families="tag36h11",
     border=1,
     nthreads=1,
-    quad_decimate=0.5,  # lowered to improve detection accuracy
+    quad_decimate=0.5,
     quad_blur=0.0,
     refine_edges=True,
     debug=True
 )
 detector = apriltag.Detector(options)
 
-# --- Main loop for processing live camera frames ---
+# --- Main loop for processing local frames ---
 while True:
-    # Read a frame from the video stream
+    # Read a frame from the camera
     ret, frame = cap.read()
     
-    # If the frame was not read successfully, break the loop
     if not ret:
-        print("[ERROR] Failed to grab frame.")
+        print("[ERROR] Failed to grab frame from camera.")
         break
-    
+
     # Convert the frame to grayscale for AprilTag detection
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
     # Detect the AprilTags in the grayscale frame
     results, dimg = detector.detect(gray, return_image=True)
-    print("[INFO] {} total AprilTags detected".format(len(results)))
-
+    
     # loop over the detected AprilTags
     for r in results:
-        print(f"[DEBUG] Detected tag id: {r.tag_id}, corners: {r.corners}")
-        
         # --- Calling the function with the detected tag ID ---
         return_value(r.tag_id)
         # ---------------------------------------------------
@@ -84,8 +118,11 @@ while True:
         tag_family = r.tag_family.decode("utf-8")
         cv.putText(frame, tag_family, (ptA[0], ptA[1] - 15),
             cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        print("[INFO] tag family: {}".format(tag_family))
-
+    
+    # --- Call the drone logic function after processing all tags in the frame ---
+    drone_logic(results)
+    # ----------------------------------------------------------------------------
+    
     # show the output frame
     cv.imshow("AprilTag Detector", frame)
     if dimg is not None:
