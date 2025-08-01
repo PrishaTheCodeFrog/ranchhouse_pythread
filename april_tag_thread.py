@@ -1,30 +1,33 @@
 import apriltag
-import argparse 
 import cv2 as cv
 import os
 
-# constructing the argument parser and parse the arguments
-ap = argparse.ArgumentParser()
-ap.add_argument("-i", "--image", required=True, 
-    help="path to the input image containing AprilTag")
-args = vars(ap.parse_args())
+# --- Function to handle the detected tag ID ---
+def return_value(tag_id):
+    """
+    This function is called for each detected AprilTag.
+    It prints the tag ID, but you can modify this function
+    to return a value or perform other actions.
+    """
+    print(f"[ACTION] AprilTag with ID {tag_id} has been detected.")
+    # You can return the tag_id here if this function is called from another function
+    # return tag_id
 
-# load the input image and convert it to grayscale
-print("[INFO] loading image...")
-image = cv.imread(args["image"])
-if image is None:
-    print("[ERROR] Could not read image")
+# --- End of function ---
+
+# --- Setup for live camera feed ---
+print("[INFO] starting video stream...")
+# The argument 0 typically refers to the default camera
+cap = cv.VideoCapture(0)
+
+# Check if the camera was opened successfully
+if not cap.isOpened():
+    print("[ERROR] Could not open video stream. Please check your camera.")
     exit()
+# --- End of setup ---
 
-gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-print(f"[INFO] Grayscale image shape: {gray.shape}, dtype: {gray.dtype}")
-print(f"[INFO] Grayscale image min pixel value: {gray.min()}")
-print(f"[INFO] Grayscale image max pixel value: {gray.max()}")
-cv.imwrite("grayscale_input_for_debug.png", gray)
-print("[INFO] Grayscale input image saved as grayscale_input_for_debug.png")
-
-# define the AprilTag detector options and then detect the AprilTags in the input image
-print("[INFO] detecting AprilTags...")
+# define the AprilTag detector options
+print("[INFO] configuring AprilTag detector...")
 options = apriltag.DetectorOptions(
     families="tag36h11",
     border=1,
@@ -34,40 +37,65 @@ options = apriltag.DetectorOptions(
     refine_edges=True,
     debug=True
 )
-detector = apriltag.Detector(options)  # no searchpath argument
+detector = apriltag.Detector(options)
 
-results, dimg = detector.detect(gray, return_image=True)
-print("[INFO] {} total AprilTags detected".format(len(results)))
-
-# loop over the detected AprilTags
-for r in results:
-    print(f"[DEBUG] Detected tag id: {r.tag_id}, corners: {r.corners}")
+# --- Main loop for processing live camera frames ---
+while True:
+    # Read a frame from the video stream
+    ret, frame = cap.read()
     
-    (ptA, ptB, ptC, ptD) = r.corners
-    ptA = (int(ptA[0]), int(ptA[1]))
-    ptB = (int(ptB[0]), int(ptB[1]))
-    ptC = (int(ptC[0]), int(ptC[1]))
-    ptD = (int(ptD[0]), int(ptD[1]))
+    # If the frame was not read successfully, break the loop
+    if not ret:
+        print("[ERROR] Failed to grab frame.")
+        break
     
-    # draw the bounding box on the image
-    cv.line(image, ptA, ptB, (0, 255, 0), 2)
-    cv.line(image, ptB, ptC, (0, 255, 0), 2)
-    cv.line(image, ptC, ptD, (0, 255, 0), 2)
-    cv.line(image, ptD, ptA, (0, 255, 0), 2)
+    # Convert the frame to grayscale for AprilTag detection
+    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
-    # draw the center (x, y)-coordinates of the AprilTag
-    (cX, cY) = (int(r.center[0]), int(r.center[1]))
-    cv.circle(image, (cX, cY), 5, (0, 0, 255), -1)
+    # Detect the AprilTags in the grayscale frame
+    results, dimg = detector.detect(gray, return_image=True)
+    print("[INFO] {} total AprilTags detected".format(len(results)))
 
-    # draw the tag family on the image
-    tag_family = r.tag_family.decode("utf-8")
-    cv.putText(image, tag_family, (ptA[0], ptA[1] - 15),
-        cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    print("[INFO] tag family: {}".format(tag_family))
+    # loop over the detected AprilTags
+    for r in results:
+        print(f"[DEBUG] Detected tag id: {r.tag_id}, corners: {r.corners}")
+        
+        # --- Calling the function with the detected tag ID ---
+        return_value(r.tag_id)
+        # ---------------------------------------------------
 
-# show the output image after AprilTag detection
-cv.imshow("Image", image)
-if dimg is not None:
-    cv.imshow("Debug Image", dimg)
-cv.waitKey(0)
+        (ptA, ptB, ptC, ptD) = r.corners
+        ptA = (int(ptA[0]), int(ptA[1]))
+        ptB = (int(ptB[0]), int(ptB[1]))
+        ptC = (int(ptC[0]), int(ptC[1]))
+        ptD = (int(ptD[0]), int(ptD[1]))
+        
+        # draw the bounding box on the image
+        cv.line(frame, ptA, ptB, (0, 255, 0), 2)
+        cv.line(frame, ptB, ptC, (0, 255, 0), 2)
+        cv.line(frame, ptC, ptD, (0, 255, 0), 2)
+        cv.line(frame, ptD, ptA, (0, 255, 0), 2)
+
+        # draw the center (x, y)-coordinates of the AprilTag
+        (cX, cY) = (int(r.center[0]), int(r.center[1]))
+        cv.circle(frame, (cX, cY), 5, (0, 0, 255), -1)
+
+        # draw the tag family on the image
+        tag_family = r.tag_family.decode("utf-8")
+        cv.putText(frame, tag_family, (ptA[0], ptA[1] - 15),
+            cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        print("[INFO] tag family: {}".format(tag_family))
+
+    # show the output frame
+    cv.imshow("AprilTag Detector", frame)
+    if dimg is not None:
+        cv.imshow("Debug Image", dimg)
+
+    # Break the loop if the 'q' key is pressed
+    if cv.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# --- Cleanup ---
+print("[INFO] Exiting program...")
+cap.release()
 cv.destroyAllWindows()
